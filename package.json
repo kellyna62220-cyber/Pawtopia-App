@@ -1,8 +1,8 @@
 {
   "name": "pawtopia-app",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Pawtopia, l'appli pour ordinateur (Adopt Me)",
-  "author": "Kellyna",
+  "author": { "name": "Kellyna", "email": "kellyna62220@gmail.com" },
   "license": "UNLICENSED",
   "main": "main.js",
   "scripts": {
