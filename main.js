@@ -71,11 +71,12 @@ async function poll() {
     const items = nf.items || [], maxId = items.reduce((m, i) => Math.max(m, i.id), 0);
     const unread = me.unread || 0;
     const quiet = win && win.isVisible() && win.isFocused();                       // la fenêtre est au premier plan : inutile de notifier
-    if (lastId !== null && !quiet) {
-      const fresh = items.filter(i => i.id > lastId && !i.seen).reverse();
+    const pr = nf.prefs || {}, dnd = me.user.status === 'dnd' || !!pr.mute;           // « Ne pas déranger » ou mode muet : aucune notification sur le PC
+    if (lastId !== null && !quiet && !dnd) {
+      const fresh = items.filter(i => i.id > lastId && !i.seen && pr[i.type]?.s !== 0).reverse();   // seulement les types que la personne a gardés
       fresh.slice(0, 3).forEach(i => toast('Pawtopia', i.text, i.link));
       if (fresh.length > 3) toast('Pawtopia', '+ ' + (fresh.length - 3) + ' autres notifications', '#/notifs');
-      if (unread > (lastUnread || 0)) toast('✉️ Nouveau message', 'Tu as ' + unread + ' message(s) non lu(s).', '#/messages');
+      if (unread > (lastUnread || 0) && pr.pm?.s !== 0) toast('✉️ Nouveau message', 'Tu as ' + unread + ' message(s) non lu(s).', '#/messages');
     }
     lastId = maxId; lastUnread = unread;
   } catch { }
