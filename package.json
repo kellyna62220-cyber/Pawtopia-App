@@ -1,6 +1,6 @@
 {
   "name": "pawtopia-app",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Pawtopia, l'appli pour ordinateur (Adopt Me)",
   "author": {
     "name": "Kellyna",
@@ -72,6 +72,14 @@
       "owner": "kellyna62220-cyber",
       "repo": "Pawtopia-App",
       "releaseType": "release"
-    }
+    },
+    "protocols": [
+      {
+        "name": "Pawtopia",
+        "schemes": [
+          "pawtopia"
+        ]
+      }
+    ]
   }
 }
