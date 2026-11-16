@@ -1,5 +1,6 @@
 // Pawtopia pour ordinateur : une fenêtre qui ouvre le site (toujours à jour, rien à re-télécharger).
-const { app, BrowserWindow, shell, Menu, nativeTheme } = require('electron');
+const { app, BrowserWindow, shell, Menu, nativeTheme, Tray, Notification, nativeImage, net, session } = require('electron');
+const fs = require('fs');
 const path = require('path');
 
 const SITE = 'https://pawtopia-adoptme.onrender.com';
@@ -26,7 +27,60 @@ app.on('open-url', (e, u) => { e.preventDefault(); handleUrl(u); });
 const isAuthUrl = url => { try { const x = new URL(url); return x.host === HOST && /^\/auth\/(google|discord|roblox)/.test(x.pathname); } catch { return false; } };
 const loginInBrowser = () => shell.openExternal(SITE + '/#/desktoplink');
 
-let win;
+let win, tray, quitting = false;
+const ICON = path.join(__dirname, 'build', 'icon.png');
+const startHidden = process.argv.includes('--hidden');
+app.setAppUserModelId('fr.pawtopia.app');   // nécessaire pour les notifications Windows
+
+function showWin(link) {
+  if (!win) return create();
+  if (win.isMinimized()) win.restore();
+  win.show(); win.focus();
+  if (link) win.loadURL(SITE + '/' + String(link).replace(/^\//, ''));
+}
+// Icône à côté de l'horloge : fermer la fenêtre ne coupe pas l'appli, pour continuer à recevoir les notifications.
+function makeTray() {
+  try {
+    tray = new Tray(nativeImage.createFromPath(ICON).resize({ width: 16, height: 16 }));
+    tray.setToolTip('Pawtopia');
+    const build = () => Menu.buildFromTemplate([
+      { label: 'Ouvrir Pawtopia', click: () => showWin() },
+      { label: 'Lancer au démarrage de l\'ordinateur', type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: m => { app.setLoginItemSettings({ openAtLogin: m.checked, args: ['--hidden'] }); } },
+      { type: 'separator' },
+      { label: 'Quitter', click: () => { quitting = true; app.quit(); } }
+    ]);
+    tray.setContextMenu(build());
+    tray.on('click', () => showWin());
+  } catch { }
+}
+// Notifications : on interroge le site toutes les 45 s (les notifications « push » du navigateur ne marchent pas dans une appli).
+let lastId = null, lastUnread = null;
+async function api(p) {
+  const r = await net.fetch(SITE + p, { session: session.defaultSession, credentials: 'include', headers: { 'X-Requested-With': 'pawtopia' } });
+  if (!r.ok) return null; return r.json();
+}
+function toast(title, body, link) {
+  if (!Notification.isSupported()) return;
+  const n = new Notification({ title, body, icon: ICON, silent: false });   // silent:false = son de notification du système
+  n.on('click', () => showWin(link)); n.show();
+}
+async function poll() {
+  try {
+    const nf = await api('/api/notifs'), me = await api('/api/me');
+    if (!nf || !me || !me.user) { lastId = null; lastUnread = null; return; }      // pas connecté
+    const items = nf.items || [], maxId = items.reduce((m, i) => Math.max(m, i.id), 0);
+    const unread = me.unread || 0;
+    const quiet = win && win.isVisible() && win.isFocused();                       // la fenêtre est au premier plan : inutile de notifier
+    if (lastId !== null && !quiet) {
+      const fresh = items.filter(i => i.id > lastId && !i.seen).reverse();
+      fresh.slice(0, 3).forEach(i => toast('Pawtopia', i.text, i.link));
+      if (fresh.length > 3) toast('Pawtopia', '+ ' + (fresh.length - 3) + ' autres notifications', '#/notifs');
+      if (unread > (lastUnread || 0)) toast('✉️ Nouveau message', 'Tu as ' + unread + ' message(s) non lu(s).', '#/messages');
+    }
+    lastId = maxId; lastUnread = unread;
+  } catch { }
+}
+
 function create() {
   nativeTheme.themeSource = 'dark';
   win = new BrowserWindow({
@@ -37,7 +91,9 @@ function create() {
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: path.join(__dirname, 'preload.js') }
   });
   Menu.setApplicationMenu(null);
-  win.once('ready-to-show', () => win.show());
+  win.once('ready-to-show', () => { if (!startHidden) win.show(); });
+  win.on('close', e => { if (!quitting && tray) { e.preventDefault(); win.hide(); } });
+  win.on('closed', () => { win = null; });
 
   let tries = 0;
   const load = () => win.loadURL(SITE);
@@ -65,7 +121,13 @@ function create() {
   const first = process.argv.find(a => a.startsWith(PROTO + '://')) || pendingUrl; if (first) { pendingUrl = null; win.webContents.once('did-finish-load', () => handleUrl(first)); }
 }
 
-app.on('second-instance', (_e, argv) => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } const u = argv.find(a => a.startsWith(PROTO + '://')); if (u) handleUrl(u); });
-app.whenReady().then(create);
-app.on('window-all-closed', () => app.quit());
-app.on('activate', () => { if (!BrowserWindow.getAllWindows().length) create(); });
+app.on('second-instance', (_e, argv) => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } const u = argv.find(a => a.startsWith(PROTO + '://')); if (u) handleUrl(u); });
+app.whenReady().then(() => {
+  create(); makeTray();
+  // 1er lancement : démarrage automatique activé (désactivable dans le menu de l'icône à côté de l'horloge)
+  try { const f = path.join(app.getPath('userData'), 'first-run.json'); if (!fs.existsSync(f)) { fs.writeFileSync(f, '1'); app.setLoginItemSettings({ openAtLogin: true, args: ['--hidden'] }); } } catch { }
+  setTimeout(poll, 15000); setInterval(poll, 45000);
+});
+app.on('before-quit', () => { quitting = true; });
+app.on('window-all-closed', () => { if (!tray) app.quit(); });
+app.on('activate', () => showWin());
