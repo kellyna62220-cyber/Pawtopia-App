@@ -1,5 +1,5 @@
 // Pawtopia pour ordinateur : une fenêtre qui ouvre le site (toujours à jour, rien à re-télécharger).
-const { app, BrowserWindow, shell, Menu, nativeTheme, Tray, Notification, nativeImage, net, session } = require('electron');
+const { app, BrowserWindow, shell, Menu, nativeTheme, Tray, Notification, nativeImage, net, session, ipcMain } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
@@ -81,6 +81,45 @@ async function poll() {
   } catch { }
 }
 
+
+// ---------- Mises à jour de l'appli : bannière en haut « Mettre à jour maintenant » ----------
+const RELEASES = 'https://github.com/kellyna62220-cyber/Pawtopia-App/releases/latest';
+// Mac (appli non signée) et Linux .deb ne peuvent pas se mettre à jour seuls : le bouton ouvre la page de téléchargement.
+const MANUAL_UPDATE = process.platform === 'darwin' || (process.platform === 'linux' && !process.env.APPIMAGE);
+let upd = null, autoUpdater = null;                    // upd = { version, state: 'available' | 'downloading', pct }
+const pushUpd = () => { if (win && !win.isDestroyed()) win.webContents.send('upd:state', upd); };
+ipcMain.handle('upd:pending', () => upd && { ...upd, manual: MANUAL_UPDATE });
+ipcMain.handle('upd:start', async () => {
+  if (!upd) return;
+  if (MANUAL_UPDATE || !autoUpdater) { shell.openExternal(RELEASES); return; }
+  upd = { ...upd, state: 'downloading', pct: 0 }; pushUpd();
+  try { await autoUpdater.downloadUpdate(); } catch { upd = { ...upd, state: 'available' }; pushUpd(); shell.openExternal(RELEASES); }
+});
+function setupUpdates() {
+  if (process.env.PAWTOPIA_FAKE_UPDATE) { upd = { version: 'v9.9.9', state: 'available' }; return; }   // test d'affichage
+  if (!app.isPackaged) return;
+  try {
+    ({ autoUpdater } = require('electron-updater'));
+    autoUpdater.autoDownload = false; autoUpdater.autoInstallOnAppQuit = false;
+    autoUpdater.on('update-available', i => { upd = { version: 'v' + i.version, state: 'available' }; pushUpd(); });
+    autoUpdater.on('download-progress', p => { upd = { ...upd, state: 'downloading', pct: Math.round(p.percent || 0) }; pushUpd(); });
+    autoUpdater.on('update-downloaded', () => { quitting = true; autoUpdater.quitAndInstall(false, true); });
+    autoUpdater.on('error', () => { });
+    const check = () => autoUpdater.checkForUpdates().catch(() => { });
+    setTimeout(check, 20000); setInterval(check, 3 * 3600 * 1000);
+  } catch { }
+}
+const BANNER_JS = `(() => { if (!window.pawtopiaDesktop || window.__updB) return; window.__updB = 1;
+  const bar = document.createElement('div'); bar.style.cssText = 'display:none;position:relative;z-index:99999;padding:9px 14px;text-align:center;font:700 14px system-ui,Segoe UI,sans-serif;color:#fff;background:linear-gradient(135deg,#ff5fb0,#6c7bff)';
+  const t = document.createElement('span'), b = document.createElement('button');
+  b.style.cssText = 'margin-left:12px;border:0;border-radius:999px;padding:6px 16px;font:800 13px system-ui,Segoe UI,sans-serif;cursor:pointer;background:#fff;color:#4b3bd6';
+  bar.append(t, b); document.body.prepend(bar);
+  const show = s => { if (!s) { bar.style.display = 'none'; return; } bar.style.display = 'block';
+    if (s.state === 'downloading') { t.textContent = '⬇️ Téléchargement de la mise à jour… ' + (s.pct || 0) + ' %'; b.style.display = 'none'; }
+    else { t.textContent = '🆕 Nouvelle version de Pawtopia disponible (' + s.version + ')'; b.style.display = ''; b.textContent = s.manual ? 'Télécharger la mise à jour' : 'Mettre à jour maintenant'; } };
+  b.onclick = () => window.pawtopiaDesktop.startUpdate();
+  window.pawtopiaDesktop.onUpdate(s => show(s && { ...s, manual: ${MANUAL_UPDATE} })); window.pawtopiaDesktop.pendingUpdate().then(show); })();`;
+
 function create() {
   nativeTheme.themeSource = 'dark';
   win = new BrowserWindow({
@@ -117,6 +156,7 @@ function create() {
     if (isAuthUrl(url)) { e.preventDefault(); loginInBrowser(); return; }
     if (external(url)) { e.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); }
   });
+  win.webContents.on('did-finish-load', () => { if (win.webContents.getURL().startsWith(SITE)) win.webContents.executeJavaScript(BANNER_JS).catch(() => { }); });
   load();
   const first = process.argv.find(a => a.startsWith(PROTO + '://')) || pendingUrl; if (first) { pendingUrl = null; win.webContents.once('did-finish-load', () => handleUrl(first)); }
 }
@@ -127,6 +167,8 @@ app.whenReady().then(() => {
   // 1er lancement : démarrage automatique activé (désactivable dans le menu de l'icône à côté de l'horloge)
   try { const f = path.join(app.getPath('userData'), 'first-run.json'); if (!fs.existsSync(f)) { fs.writeFileSync(f, '1'); app.setLoginItemSettings({ openAtLogin: true, args: ['--hidden'] }); } } catch { }
   setTimeout(poll, 15000); setInterval(poll, 45000);
+  setupUpdates();
+  if (process.env.PAWTOPIA_SHOT) setTimeout(async () => { try { fs.writeFileSync(process.env.PAWTOPIA_SHOT, (await win.webContents.capturePage()).toPNG()); } catch { } app.exit(0); }, 14000);
 });
 app.on('before-quit', () => { quitting = true; });
 app.on('window-all-closed', () => { if (!tray) app.quit(); });
