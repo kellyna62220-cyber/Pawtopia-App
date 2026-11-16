@@ -2,7 +2,10 @@
   "name": "pawtopia-app",
   "version": "1.0.1",
   "description": "Pawtopia, l'appli pour ordinateur (Adopt Me)",
-  "author": { "name": "Kellyna", "email": "kellyna62220@gmail.com" },
+  "author": {
+    "name": "Kellyna",
+    "email": "kellyna62220@gmail.com"
+  },
   "license": "UNLICENSED",
   "main": "main.js",
   "scripts": {
@@ -17,11 +20,58 @@
     "appId": "fr.pawtopia.app",
     "productName": "Pawtopia",
     "icon": "build/icon.png",
-    "directories": { "output": "dist" },
-    "files": ["main.js", "preload.js", "offline.html", "build/icon.png"],
-    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "artifactName": "Pawtopia-Windows.${ext}" },
-    "nsis": { "oneClick": true, "perMachine": false, "createDesktopShortcut": true, "createStartMenuShortcut": true, "shortcutName": "Pawtopia" },
-    "mac": { "target": [{ "target": "dmg", "arch": ["universal"] }], "category": "public.app-category.games", "artifactName": "Pawtopia-Mac.${ext}" },
-    "linux": { "target": ["AppImage", "deb"], "category": "Game", "artifactName": "Pawtopia-Linux.${ext}" }
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "offline.html",
+      "build/icon.png"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Pawtopia-Windows.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Pawtopia"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "category": "public.app-category.games",
+      "artifactName": "Pawtopia-Mac.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Game",
+      "artifactName": "Pawtopia-Linux.${ext}"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "kellyna62220-cyber",
+      "repo": "Pawtopia-App",
+      "releaseType": "release"
+    }
   }
 }
